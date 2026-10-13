@@ -11,7 +11,7 @@ import sys
 
 import pythoncom
 import win32com.client
-from win32com.client import gencache
+from win32com.client import gencache, selecttlb
 
 # ---------------------------------------------------------------
 # 치수 설정 (단위: 미터)  ※ 100 mm = 0.1 m
@@ -19,17 +19,28 @@ from win32com.client import gencache
 SIDE = 0.1    # 정육면체 한 변의 길이 (100 mm)
 HALF = SIDE / 2  # 원점 기준으로 사각형을 그리기 위한 절반 길이 (50 mm)
 
-# Solid Edge 상수 타입 라이브러리(SolidEdgeConstants)의 GUID와 버전.
-# [확인 필요] 설치된 Solid Edge 버전에 따라 GUID/버전이 다를 수 있다.
-#   확인 방법: python -m win32com.client.makepy 실행 후 목록에서
-#   "Solid Edge Constants Type Library" 항목을 찾는다.
-SE_CONSTANTS_TLB = ("{C467A6F5-27ED-11D2-BE30-080036B4D502}", 0, 1, 0)
+# Solid Edge 상수 타입 라이브러리의 이름 (Siemens API 문서에 표기된 이름).
+# GUID를 직접 적지 않고, 이 이름으로 Windows에 등록된 라이브러리를 찾는다.
+SE_CONSTANTS_NAME = "Solid Edge Constants Type Library"
 
 
 def fail(step, err):
     """실패한 단계 이름과 오류 내용을 한국어로 출력하고 프로그램을 끝낸다."""
     print(f"❌ [{step}] 단계에서 실패했습니다: {err}")
     sys.exit(1)
+
+
+def load_constants():
+    """상수 타입 라이브러리를 찾아 불러오고, 상수 묶음(constants)을 돌려준다."""
+    # Windows에 등록된 타입 라이브러리 중 이름이 일치하는 것을 찾는다
+    specs = selecttlb.FindTlbsWithDescription(SE_CONSTANTS_NAME)
+    if not specs:
+        raise RuntimeError(f"'{SE_CONSTANTS_NAME}'를 찾을 수 없습니다")
+    # 찾은 파일에서 GUID와 버전을 읽어 파이썬용 상수 모듈을 만든다
+    tlb = pythoncom.LoadTypeLib(specs[-1].dll)
+    guid, lcid, _, major, minor, _ = tlb.GetLibAttr()
+    gencache.EnsureModule(str(guid), lcid, major, minor)
+    return win32com.client.constants
 
 
 def main():
@@ -51,9 +62,8 @@ def main():
         app.Visible = True  # 화면에 보이게 한다
 
         # 상수(igProfileClosed 등)를 쓰기 위해 상수 타입 라이브러리를 불러온다.
-        # 이 작업이 끝나야 win32com.client.constants 에서 이름으로 꺼낼 수 있다.
-        gencache.EnsureModule(*SE_CONSTANTS_TLB)
-        c = win32com.client.constants
+        # 이 작업이 끝나야 c.igProfileClosed 처럼 이름으로 꺼내 쓸 수 있다.
+        c = load_constants()
     except Exception as err:
         fail("Solid Edge 연결", err)
     print("✅ Solid Edge 연결 완료")
@@ -76,6 +86,7 @@ def main():
         # 기준평면 1번 = Top(XY) 평면
         # [확인 필요] 템플릿에 따라 1번이 Top 평면이 아닐 수 있음
         ref_plane = part.RefPlanes.Item(1)
+        print(f"사용한 기준평면: {ref_plane.Name}")  # Top(윗면)인지 눈으로 확인용
 
         # 프로파일(스케치) 묶음을 만들고, 그 안에 기준평면 위의 프로파일을 추가
         profile_set = part.ProfileSets.Add()
@@ -95,7 +106,7 @@ def main():
         l4 = lines.AddBy2Points(p4[0], p4[1], p1[0], p1[1])
 
         # 각 선의 끝점과 다음 선의 시작점을 붙여서(키포인트 구속) 닫힌 도형으로 만든다
-        # [확인 필요] igLineStart / igLineEnd 상수명 (KeypointIndexConstants)
+        # [확인 필요] igLineStart / igLineEnd 상수명 (공개 예제에서 사용 확인, 공식 문서 미확인)
         rel = profile.Relations2d
         rel.AddKeypoint(l1, c.igLineEnd, l2, c.igLineStart)
         rel.AddKeypoint(l2, c.igLineEnd, l3, c.igLineStart)
@@ -103,7 +114,6 @@ def main():
         rel.AddKeypoint(l4, c.igLineEnd, l1, c.igLineStart)
 
         # 프로파일을 닫고 검사한다. 0이 아니면 닫힌 도형이 아니라는 뜻.
-        # [확인 필요] igProfileClosed 상수명 (ProfileValidationType)
         status = profile.End(c.igProfileClosed)
         if status != 0:
             raise RuntimeError(f"프로파일이 닫히지 않았습니다 (반환값 {status})")
@@ -116,7 +126,7 @@ def main():
     # -----------------------------------------------------------
     try:
         # 인자: 프로파일 개수, 프로파일 목록, 돌출 방향, 돌출 거리(미터)
-        # [확인 필요] igRight 상수명 (FeaturePropertyConstants). 방향이 반대로 나오면 igLeft 사용
+        # 방향이 반대로 나오면 igRight 대신 igLeft 사용
         part.Models.AddFiniteExtrudedProtrusion(1, [profile], c.igRight, SIDE)
         profile.Visible = False  # 다 쓴 스케치 선은 숨긴다
     except Exception as err:

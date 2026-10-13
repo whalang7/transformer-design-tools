@@ -6,3 +6,4 @@
 - 실행: `python make_cube.py` (Windows + Solid Edge 2024 이상)
 - 오류 `Invalid class string` → Solid Edge 미설치/미등록. Solid Edge를 한 번 직접 실행 후 재시도
 - 오류 `constants` 의 `AttributeError` → 상수 타입 라이브러리 미생성. `python -m win32com.client.makepy`에서 "Solid Edge Constants Type Library" 선택 후 재실행
+- Python 없는 PC: GitHub Actions의 "Build make_cube.exe" 실행 결과(Artifacts)에서 `make_cube.exe`를 받아 더블클릭

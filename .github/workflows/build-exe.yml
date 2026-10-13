@@ -1,0 +1,44 @@
+# make_cube.py 를 Windows 실행파일(make_cube.exe)로 빌드한다.
+# 결과물은 Actions 실행 화면의 Artifacts 에서 내려받는다.
+name: Build make_cube.exe
+
+on:
+  push:
+    paths:
+      - make_cube.py
+      - .github/workflows/build-exe.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pywin32 pyinstaller
+
+      - name: Build exe
+        run: pyinstaller --onefile --console --name make_cube make_cube.py
+
+      # 빌드 서버에는 Solid Edge가 없으므로 "연결 단계 실패"로 끝나는지만 확인한다.
+      # (exe 안에 필요한 모듈이 빠짐없이 들어갔는지 검사하는 용도)
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          # 마지막 "엔터를 누르면..." 대기에 빈 줄을 넣어 바로 끝나게 한다
+          $out = "" | dist\make_cube.exe | Out-String
+          Write-Output $out
+          if ($LASTEXITCODE -ne 1 -or $out -notmatch "Solid Edge 연결") { exit 1 }
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: make_cube-exe
+          path: dist/make_cube.exe

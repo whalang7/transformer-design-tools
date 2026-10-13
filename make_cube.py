@@ -144,4 +144,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # 출력이 파일/파이프로 갈 때 ✅ 같은 문자 때문에 오류가 나지 않도록 UTF-8로 맞춘다
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    try:
+        main()
+    finally:
+        # 실행파일(.exe)을 더블클릭하면 창이 바로 닫히므로, 결과를 읽을 시간을 준다
+        if getattr(sys, "frozen", False):
+            try:
+                input("엔터를 누르면 창이 닫힙니다...")
+            except EOFError:
+                pass
